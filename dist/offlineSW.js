@@ -49,10 +49,7 @@ self.addEventListener('fetch', (event) => {
           }
           // Fetch from network and cache
           return fetch(event.request).then((networkResponse) => {
-            // Only cache successful GET requests
-            if (event.request.method === 'GET' && networkResponse.ok) {
-              cache.put(event.request, networkResponse.clone());
-            }
+            cache.put(event.request, networkResponse.clone());
             return networkResponse;
           }).catch(() => {
             // If offline and no cache, return a generic error response for APIs
@@ -71,16 +68,10 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((response) => {
       return response || fetch(event.request).catch(() => {
-        // If offline and request fails:
-        //   • For navigation requests, serve the cached shell.
-        //   • For other requests, return a generic offline response.
+        // Fallback for offline if page reloads
         if (event.request.mode === 'navigate') {
           return caches.match('/index.html');
         }
-        return new Response('Offline mode – resource unavailable', {
-          status: 503,
-          statusText: 'Service Unavailable',
-        });
       });
     })
   );

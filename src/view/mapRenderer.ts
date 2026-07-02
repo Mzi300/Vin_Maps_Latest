@@ -1,5 +1,6 @@
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { fetchPOIs } from '../engine/poiService';
 import { intelligence } from '../engine/intelligenceManager';
 import { VisualEffects } from './visualEffects';
 import { NavigationCameraController, CameraMode } from './navigationCameraController';
@@ -10,6 +11,11 @@ export class MapRenderer {
   public visualEffects!: VisualEffects;
   public cameraController!: NavigationCameraController;
   private styleLoadedPromise: Promise<void>;
+  // POI handling fields
+  private poiLayerInitialized = false;
+  private selectedCategories: Set<string> = new Set();
+  private categoryConfig: any[] = [];
+
   private resolveStyleLoaded!: () => void;
   private onStyleReadyCallback?: () => void;
 
@@ -20,6 +26,8 @@ export class MapRenderer {
     if (center) this.initialCenter = center;
     this.styleLoadedPromise = new Promise(resolve => this.resolveStyleLoaded = resolve);
     this.initMap(token);
+    // Load POI configuration after map initialization
+    this.map.once('load', () => this.loadPoiConfig());
   }
 
   /** --------------------------------------------------------------
@@ -124,6 +132,9 @@ export class MapRenderer {
         // Resolve internal ready promise
         this.resolveStyleLoaded();
         if (this.onStyleReadyCallback) this.onStyleReadyCallback();
+        
+        // Initialise POI layer after style is ready
+        this.setupPOILayer();
       });
 
       this.map.on('load', () => {
@@ -161,6 +172,9 @@ export class MapRenderer {
             this.map.getCanvas().style.cursor = hasInteractive ? 'pointer' : '';
           } catch (err) {}
         });
+
+        // Load POI configuration and UI
+        this.loadPoiConfig();
       });
     } catch (e) {
       console.error('[MapRenderer] Initialization failed:', e);
@@ -189,10 +203,176 @@ export class MapRenderer {
    *  POI layer filter
    *  -------------------------------------------------------------- */
   public setPoiFilter(category: string | null) {
+    // Existing functionality retains
+
     if (this.visualEffects) {
       this.visualEffects.setPoiFilter(category);
     }
   }
+
+  // Backward-compatible method used by legacy code
+  public showPoiResults(): void {
+    // Delegates to the modern refreshPOIs implementation
+    this.refreshPOIs();
+  }
+
+  // ----- POI Layer Management -----
+  // ----- POI Layer Management -----
+  private async loadPoiConfig() {
+    try {
+      const resp = await fetch('/api/config/poi-categories');
+      const data = await resp.json();
+      this.categoryConfig = data.categories;
+      const defaultEnabled: string[] = data.defaultEnabled;
+
+      // Restore selections from localStorage
+      const stored = localStorage.getItem('selectedPoiCategories');
+      const saved = stored ? JSON.parse(stored) : null;
+      const enabled = saved && Array.isArray(saved) ? saved : defaultEnabled;
+      this.selectedCategories = new Set(enabled);
+
+      this.renderPoiFilterPanel();
+      this.refreshPOIs();
+    } catch (e) {
+      console.error('Failed to load POI config', e);
+    }
+  }
+
+  private renderPoiFilterPanel() {
+    // Create container
+    let container = document.getElementById('poi-filter-panel');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'poi-filter-panel';
+      container.style.position = 'absolute';
+      container.style.top = '10px';
+      container.style.right = '10px';
+      container.style.background = 'rgba(0,0,0,0.6)';
+      container.style.padding = '8px';
+      container.style.borderRadius = '4px';
+      container.style.zIndex = '10';
+      document.body.appendChild(container);
+    }
+    container.innerHTML = '';
+    this.categoryConfig.forEach(cat => {
+      const checked = this.selectedCategories.has(cat.id);
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = `poi-${cat.id}`;
+      checkbox.checked = checked;
+      checkbox.onchange = () => {
+        if (checkbox.checked) this.selectedCategories.add(cat.id);
+        else this.selectedCategories.delete(cat.id);
+        localStorage.setItem('selectedPoiCategories', JSON.stringify(Array.from(this.selectedCategories)));
+        this.refreshPOIs();
+      };
+      const label = document.createElement('label');
+      label.htmlFor = checkbox.id;
+      label.style.color = '#fff';
+      label.style.marginRight = '8px';
+      label.textContent = cat.displayName;
+      container!.appendChild(checkbox);
+      container!.appendChild(label);
+      container!.appendChild(document.createElement('br'));
+    });
+  }
+
+  private async setupPOILayer() {
+    if (this.poiLayerInitialized) return;
+    this.poiLayerInitialized = true;
+
+    // Add empty source for POIs
+    this.map.addSource('vinmaps-pois', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+      cluster: true,
+      clusterRadius: 50,
+    });
+
+    // Cluster layer
+    this.map.addLayer({
+      id: 'poi-clusters',
+      type: 'circle',
+      source: 'vinmaps-pois',
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': '#ff7e5f',
+        'circle-radius': ['step', ['get', 'point_count'], 15, 10, 20, 30, 25],
+      },
+    });
+
+    // Symbol layer for individual POIs
+    this.map.addLayer({
+      id: 'poi-symbols',
+      type: 'symbol',
+      source: 'vinmaps-pois',
+      filter: ['!', ['has', 'point_count']],
+      layout: {
+        'icon-image': ['get', 'icon'],
+        'icon-size': 0.8,
+        'icon-allow-overlap': true,
+      },
+    });
+
+    // Click handler for POI symbols
+    this.map.on('click', 'poi-symbols', (e) => {
+      const props = e.features?.[0]?.properties as any;
+      if (props) this.showPOICard(props);
+    });
+
+    // Load custom icons for each category
+    this.categoryConfig.forEach(cat => {
+      const iconName = `poi-${cat.id}`;
+      this.map.loadImage(`/assets/poi-icons/${iconName}.svg`, (err, img) => {
+        if (!err && img) this.map.addImage(iconName, img);
+      });
+    });
+  }
+
+  private async refreshPOIs() {
+    // Defensive checks – map may not be ready or Bounds could be undefined in rare edge cases
+    if (!this.map) return;
+    const bounds = this.map.getBounds?.();
+    const center = this.map.getCenter?.();
+    if (!bounds || !center) {
+      console.warn('[MapRenderer] Unable to compute POI request – map not fully initialized');
+      return;
+    }
+    const radius = Math.min(
+      bounds.getNorthEast().distanceTo(bounds.getSouthWest()) / 2,
+      5000
+    );
+    const categories = Array.from(this.selectedCategories);
+    try {
+      const pois = await fetchPOIs(center.lat, center.lng, radius, categories);
+      const features = pois.map(p => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+        properties: { ...p, icon: `poi-${p.category.replace(/\s+/g, '-')}` },
+      }));
+      const source = this.map.getSource('vinmaps-pois') as any;
+      source.setData({ type: 'FeatureCollection', features });
+    } catch (err) {
+      console.warn('Failed to load POIs', err);
+    }
+  }
+
+  private showPOICard(props: any) {
+    const content = `
+      <strong>${props.name}</strong><br/>
+      ${props.category}<br/>
+      ${props.address || ''}<br/>
+      ${props.phone ? `Phone: ${props.phone}<br/>` : ''}
+      ${props.website ? `<a href="${props.website}" target="_blank">Website</a><br/>` : ''}
+      ${props.rating ? `Rating: ${props.rating}<br/>` : ''}
+      ${props.openingHours ? `Hours: ${props.openingHours}<br/>` : ''}
+    `;
+    new mapboxgl.Popup({ offset: 15 })
+      .setLngLat([props.lng, props.lat])
+      .setHTML(content)
+      .addTo(this.map);
+  }
+
 
   /** --------------------------------------------------------------
    *  Tactical road styling

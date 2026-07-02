@@ -29,7 +29,7 @@ export class SmartCityService {
     let failureCount = 0;
     
     const poll = async () => {
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? '' : 'http://localhost:3000');
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? '' : '');
       
       if (!backendUrl) {
         // Standalone production mode: run simulation directly without network request

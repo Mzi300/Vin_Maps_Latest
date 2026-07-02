@@ -6,7 +6,7 @@ export class RealtimeService {
   private static instance: RealtimeService;
 
   private constructor() {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? '' : 'http://localhost:3000');
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? '' : '');
     
     if (!backendUrl) {
       console.warn('[RealtimeService] Running in standalone tactical mode. Realtime sync disabled.');

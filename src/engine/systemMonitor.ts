@@ -18,7 +18,7 @@ export class SystemMonitor {
   };
 
   private constructor() {
-    this.backendUrl = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? '' : 'http://localhost:3000');
+    this.backendUrl = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? '' : '');
     if (!this.backendUrl) {
       this.currentStatus.linkStatus = 'offline';
       setTimeout(() => this.notify(), 100);

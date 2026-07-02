@@ -1,0 +1,27 @@
+{
+  "tomtom": {
+    "class": "src/modules/poi/tomtom.provider.ts",
+    "capabilities": ["routing","navigation","turn_by_turn","gps_matching","traffic","incidents","speed_limits"],
+    "priority": 100
+  },
+  "foursquare": {
+    "class": "src/modules/poi/foursquare.provider.ts",
+    "capabilities": ["business_poi","ratings","photos","opening_hours"],
+    "priority": 100
+  },
+  "overpass": {
+    "class": "src/modules/poi/overpass.provider.ts",
+    "capabilities": ["community_poi","public_facilities","street_names","road_geometry","walking_paths","cycle_paths"],
+    "priority": 100
+  },
+  "mapbox": {
+    "class": "src/view/providers/mapbox.provider.ts",
+    "capabilities": ["visual_map"],
+    "priority": 100
+  },
+  "openStreetMap": {
+    "class": "src/view/providers/openstreetmap.provider.ts",
+    "capabilities": ["visual_map"],
+    "priority": 95
+  }
+}

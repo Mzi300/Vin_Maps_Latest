@@ -1,7 +1,0 @@
-export declare enum UserRole {
-    DRIVER = "DRIVER",
-    ADMIN = "ADMIN",
-    MODERATOR = "MODERATOR",
-    EMERGENCY_SERVICE = "EMERGENCY_SERVICE",
-    MUNICIPALITY = "MUNICIPALITY"
-}

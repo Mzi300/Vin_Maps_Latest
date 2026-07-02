@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useTrafficAlerts } from './hooks/useTrafficAlerts';
-import MapOverlay from './components/MapOverlay';
 import { MapBranding } from './components/MapBranding';
 import { TrafficLegend } from './components/TrafficLegend';
 import { TrafficAlertToast } from './components/TrafficAlertToast';
+import { MapView } from './components/MapView';
+import { HealthDashboard } from './components/HealthDashboard';
 
 function App() {
   const [showOverlay, setShowOverlay] = useState(true);

@@ -622,8 +622,8 @@ export class NavigationSystem {
     };
 
     audio.play().catch((e) => {
-      // Handle auto-play restrictions
-      audio.onerror(e as any);
+      console.error('Audio playback error:', e);
+      audio.onerror?.(e as any);
     });
   }
 

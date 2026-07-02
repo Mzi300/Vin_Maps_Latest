@@ -25,6 +25,8 @@ window.addEventListener('error', (e) => {
 
 class App {
   private map!: MapRenderer;
+  // Routing priority mode: safest, fastest, or balanced
+  private routingMode: 'safest' | 'fastest' | 'balanced' = 'safest';
   private token: string | null = import.meta.env.VITE_MAPBOX_TOKEN || 'REDACTED';
   private routeOptimizer!: RouteOptimizer;
   private currentOriginCoords: [number, number] | null = null;
@@ -40,6 +42,10 @@ class App {
   private hasSpokenWelcome: boolean = false;
 
   constructor() {
+    // Load persisted routing mode
+    const savedMode = localStorage.getItem('routingMode') as 'safest' | 'fastest' | 'balanced' | null;
+    if (savedMode) this.routingMode = savedMode;
+
     this.renderUIShell();
     this.initViewportHeight();
     this.initResizeObserver();
@@ -200,6 +206,12 @@ class App {
                   <input type="text" class="search-input" placeholder="${lastAddress}" id="dest-input" autocomplete="off" style="flex: 1;">
                   <button id="locate-me" class="menu-btn" style="font-size: 1.1rem; padding: 0 5px;" title="My Location">📍</button>
                   <button id="lock-dest" class="tactical-btn" style="padding: 0.4rem; font-size: 0.9rem;" title="Directions">↱</button>
+                </div>
+                <!-- Routing Priority Toggle -->
+                <div id="routing-priority" class="routing-priority" style="margin-top: 8px; font-size: 0.85rem; color: var(--primary-accent);">
+                  <label><input type="radio" name="routing-mode" value="safest" ${this.routingMode === 'safest' ? 'checked' : ''}> Safest</label>
+                  <label style="margin-left: 10px;"><input type="radio" name="routing-mode" value="fastest" ${this.routingMode === 'fastest' ? 'checked' : ''}> Fastest</label>
+                  <label style="margin-left: 10px;"><input type="radio" name="routing-mode" value="balanced" ${this.routingMode === 'balanced' ? 'checked' : ''}> Balanced</label>
                 </div>
                 <div id="suggestions-list" class="glass-panel suggestions-panel" style="display: none;"></div>
               </div>
@@ -957,7 +969,18 @@ class App {
     
     // No longer auto-clicking the first tab. 
     // The operator must now intentionally select a transport mode to generate the route.
-    this.showTacticalNotification('SELECT TRANSPORT MODE TO GENERATE ROUTE');
+      this.showTacticalNotification('SELECT TRANSPORT MODE TO GENERATE ROUTE');
+      // Attach listener for routing mode changes
+      const priorityDiv = document.getElementById('routing-priority');
+      if (priorityDiv) {
+        priorityDiv.addEventListener('change', (e) => {
+          const target = e.target as HTMLInputElement;
+          if (target && target.name === 'routing-mode') {
+            this.routingMode = target.value as typeof this.routingMode;
+            localStorage.setItem('routingMode', this.routingMode);
+          }
+        });
+      }
   }
 
   private async finalizeRouting(type: TransportType) {
@@ -984,7 +1007,8 @@ class App {
         this.currentOriginCoords,
         this.currentDestCoords,
         profile,
-        this.routingAbortController.signal
+        this.routingAbortController.signal,
+        this.routingMode
       );
 
       if (navBottomBar) {
@@ -1077,7 +1101,8 @@ class App {
         currentPos,
         this.currentDestCoords,
         profile,
-        this.routingAbortController.signal
+        this.routingAbortController.signal,
+        this.routingMode
       );
 
       if (route) {
@@ -1115,30 +1140,95 @@ class App {
             shisanyama: 'shisanyama,restaurant,braai',
             spaza: 'spaza,convenience store,grocery',
             hotel: 'hotel,lodging,guest house',
-            school: 'school,university,college'
         };
 
         const searchTerm = categoryMap[category] || category;
         const [lng, lat] = this.currentOriginCoords;
-        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(searchTerm)}.json?access_token=${this.token}&proximity=${lng},${lat}&limit=1&country=ZA&language=en`;
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(searchTerm)}.json?access_token=${this.token}&proximity=${lng},${lat}&limit=10&country=ZA&language=en`;
 
         try {
-            const res = await fetch(url);
-            const data = await res.json();
-            if (data.features && data.features.length > 0) {
-                const f = data.features[0];
-                const coords: [number, number] = f.center;
-                this.showTacticalNotification(`TARGET ACQUIRED: ${f.text.toUpperCase()}`);
-                
-                // Set as destination and trigger transport view
-                this.handleGeocodingSelection(f.text, coords, 'destination');
-            } else {
-                this.showTacticalNotification(`NO ${category.toUpperCase()} FOUND IN RADIUS`, 'warning');
-            }
-        } catch (e) {
-            console.error('Auto-locate failed:', e);
+          const res = await fetch(url);
+          const data = await res.json();
+
+          // Compute nearest three POIs
+        const nearestThree = data.features
+          .map((f: any) => ({
+            feature: f,
+            dist: Math.sqrt(Math.pow(f.center[0] - lng, 2) + Math.pow(f.center[1] - lat, 2))
+          }))
+          .sort((a: any, b: any) => a.dist - b.dist)
+          .slice(0, 3)
+          .map((item: any) => item.feature);
+
+        if (nearestThree.length === 0) {
+          this.showTacticalNotification(`NO ${category.toUpperCase()} FOUND IN RADIUS`, 'warning');
+          return;
         }
-    }
+
+        // Build GeoJSON collection for all POIs to display on map
+        const allFeatures = data.features.map((f: any) => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: f.center },
+          properties: { name: f.text }
+        }));
+        const poiGeoJson = { type: 'FeatureCollection', features: allFeatures } as any;
+        // Render all POIs on the map
+        if (this.map.showPoiResults) this.map.showPoiResults(poiGeoJson);
+
+        // Create a simple overlay with the three options
+        const overlayId = 'nearest-poi-options';
+        let overlay = document.getElementById(overlayId);
+        if (overlay) overlay.remove();
+        overlay = document.createElement('div');
+        overlay.id = overlayId;
+        overlay.style.position = 'absolute';
+        overlay.style.top = '80px';
+        overlay.style.right = '20px';
+        overlay.style.background = 'rgba(0,0,0,0.7)';
+        overlay.style.padding = '12px';
+        overlay.style.borderRadius = '8px';
+        overlay.style.zIndex = '1000';
+        overlay.style.color = '#fff';
+        overlay.style.fontFamily = 'Inter, sans-serif';
+        overlay.innerHTML = `<strong>Nearest ${category.toUpperCase()} (choose one):</strong><br/>`;
+        nearestThree.forEach((opt: any, idx: number) => {
+          const btn = document.createElement('button');
+            btn.textContent = `${idx + 1}. ${opt.text || opt.place_name || 'POI'}`;
+          btn.style.display = 'block';
+          btn.style.marginTop = '6px';
+          btn.style.width = '100%';
+          btn.style.background = '#1e90ff';
+          btn.style.border = 'none';
+          btn.style.color = '#fff';
+          btn.style.padding = '6px';
+          btn.style.borderRadius = '4px';
+          btn.onclick = () => {
+            const coords: [number, number] = opt.center;
+            this.showTacticalNotification(`TARGET ACQUIRED: ${opt.text.toUpperCase()}`);
+            this.handleGeocodingSelection(opt.text, coords, 'destination');
+            overlay?.remove();
+          };
+          overlay?.appendChild(btn);
+        });
+        // Add a cancel button
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.style.display = 'block';
+        cancelBtn.style.marginTop = '8px';
+        cancelBtn.style.width = '100%';
+        cancelBtn.style.background = '#444';
+        cancelBtn.style.border = 'none';
+        cancelBtn.style.color = '#fff';
+        cancelBtn.style.padding = '6px';
+        cancelBtn.style.borderRadius = '4px';
+        cancelBtn.onclick = () => overlay?.remove();
+        overlay?.appendChild(cancelBtn);
+        document.body.appendChild(overlay);
+
+    } catch (e) {
+  console.error('Auto-locate failed:', e);
+}
+}
 
   public reportHazard(type: string) {
     if (!this.currentOriginCoords) {

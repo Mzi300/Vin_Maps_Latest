@@ -29,7 +29,8 @@ export class RouteOptimizer {
     origin: [number, number],
     destination: [number, number],
     profile: string = 'driving',
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    mode: 'safest' | 'fastest' | 'balanced' = 'safest'
   ): Promise<OptimizedRoute | null> {
     const startTime = performance.now();
     const cacheKey = `${origin[0].toFixed(4)},${origin[1].toFixed(4)}-${destination[0].toFixed(4)},${destination[1].toFixed(4)}-${profile}`;
@@ -58,7 +59,7 @@ export class RouteOptimizer {
           const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${origin[0]},${origin[1]};${destination[0]},${destination[1]}?geometries=geojson&overview=full&steps=true&alternatives=true&access_token=${this.token}`;
           const response = await fetch(url, { signal });
           
-          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+          if (!response.ok) { console.warn(`Mapbox request failed: ${response.status}`); return null; }
           
           const data = await response.json();
           if (!data.routes || data.routes.length === 0) return null;
@@ -95,10 +96,9 @@ export class RouteOptimizer {
             };
           }));
 
-          // Sort by safety score (highest first), then by duration (lowest first) as a tie-breaker
-          scoredRoutes.sort((a, b) => (b.safetyScore - a.safetyScore) || (a.duration - b.duration));
-
-          const bestRoute = scoredRoutes[0];
+          // Rank routes according to selected mode
+          const ranked = this.rankRoutes(scoredRoutes, mode);
+          const bestRoute = ranked[0];
           const result: OptimizedRoute = {
             ...bestRoute,
             latency: performance.now() - startTime
@@ -169,5 +169,30 @@ export class RouteOptimizer {
     simplified.push(coords[coords.length - 1]);
     return simplified;
   }
-}
 
+  private rankRoutes(scoredRoutes: OptimizedRoute[], mode: 'safest' | 'fastest' | 'balanced'): OptimizedRoute[] {
+    switch (mode) {
+      case 'fastest':
+        return scoredRoutes.sort((a, b) => a.duration - b.duration);
+      case 'balanced':
+        const weightSafety = 0.6;
+        const weightDuration = 0.4;
+        return scoredRoutes.sort((a, b) => {
+          const scoreA = a.safetyScore * weightSafety - a.duration * weightDuration;
+          const scoreB = b.safetyScore * weightSafety - b.duration * weightDuration;
+          return scoreB - scoreA;
+        });
+      case 'safest':
+      default:
+        return scoredRoutes.sort((a, b) => (b.safetyScore - a.safetyScore) || (a.duration - b.duration));
+    }
+  }
+
+
+
+
+
+
+
+
+}
