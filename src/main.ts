@@ -27,7 +27,7 @@ class App {
   private map!: MapRenderer;
   // Routing priority mode: safest, fastest, or balanced
   private routingMode: 'safest' | 'fastest' | 'balanced' = 'safest';
-  private token: string | null = import.meta.env.VITE_MAPBOX_TOKEN || 'REDACTED';
+  private token: string | null = import.meta.env.VITE_MAPBOX_TOKEN || null;
   private routeOptimizer!: RouteOptimizer;
   private currentOriginCoords: [number, number] | null = null;
   private currentDestCoords: [number, number] | null = null;

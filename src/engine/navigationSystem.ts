@@ -66,7 +66,7 @@ export class NavigationSystem {
 
   private gpsTraceBuffer: [number, number][] = [];
   private lastMapMatchTime: number = 0;
-  private readonly MAPBOX_TOKEN = import.meta.env?.VITE_MAPBOX_TOKEN || 'REDACTED';
+  private readonly MAPBOX_TOKEN = import.meta.env?.VITE_MAPBOX_TOKEN || null;
 
   private hasDetectedMotion: boolean = false;
   private headingBuffer: number[] = [];
