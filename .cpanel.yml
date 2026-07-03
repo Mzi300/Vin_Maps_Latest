@@ -1,0 +1,5 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/livenets/maps.livenetstudios.co.za/
+    - /bin/cp -R dist/* $DEPLOYPATH
