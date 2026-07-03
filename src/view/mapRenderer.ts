@@ -211,7 +211,7 @@ export class MapRenderer {
   }
 
   // Backward-compatible method used by legacy code
-  public showPoiResults(): void {
+  public showPoiResults(_poiGeoJson?: unknown): void {
     // Delegates to the modern refreshPOIs implementation
     this.refreshPOIs();
   }
