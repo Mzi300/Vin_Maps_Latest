@@ -2,7 +2,7 @@ services:
   - type: web
     name: vin-maps2
     runtime: static
-    buildCommand: npm install && npx tsc --project tsconfig.json --pretty false && npx vite build
+    buildCommand: npm install && npm run build
     staticPublishPath: dist
     envVars:
       - key: NODE_VERSION
