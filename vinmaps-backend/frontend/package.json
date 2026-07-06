@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node ../../scripts/prebuild-check.js",
+    "prebuild": "node ../../scripts/prebuild-check.cjs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
