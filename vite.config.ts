@@ -4,7 +4,22 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // Listen on all network interfaces
     port: 5173,
-    strictPort: false
+    strictPort: false,
+    proxy: {
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        ws: true,
+        changeOrigin: true,
+      },
+      '/health': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/smart-city': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     rollupOptions: {
