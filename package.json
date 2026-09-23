@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:sync": "npm run build && cd vinmaps-backend/frontend && npx @capacitor/cli@7 sync android",
+    "cap:open": "cd vinmaps-backend/frontend && npx @capacitor/cli@7 open android"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
