@@ -10,6 +10,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+    <!-- Open the Mapbox TLS/DNS handshakes during HTML parsing instead of after the JS
+         bundle has been parsed and executed. On the Galaxy A02 (mobile data, weak CPU)
+         this removes a full DNS + TCP + TLS round trip from the critical path to the map.
+         Harmless and non-blocking on desktop. -->
+    <link rel="preconnect" href="https://api.mapbox.com" crossorigin />
+    <link rel="dns-prefetch" href="https://api.mapbox.com" />
+    <link rel="preconnect" href="https://events.mapbox.com" crossorigin />
     
     <title>VinMaps | Tactical Intelligence Navigation</title>
     <meta name="description" content="VinMaps: Next-generation AI-powered navigation system with real-time 3D mapping and safety intelligence." />
@@ -25,6 +33,20 @@
     <meta name="twitter:title" content="VinMaps | Tactical Intelligence Navigation" />
     <meta name="twitter:description" content="Next-generation AI-powered tactical navigation system with real-time 3D mapping and safety intelligence." />
     <meta name="twitter:image" content="/og-image.png" />
+    <!-- Platform flag, set before first paint. On Android/Capacitor the launch must
+         show the VinMaps logo ONLY (no wordmark, no loading text, no duplicate art);
+         the desktop/browser loader below is left exactly as-is. -->
+    <script>
+      (function () {
+        try {
+          var cap = window.Capacitor;
+          var isNative = (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) ||
+            !!window.androidBridge ||
+            location.hostname === 'vinmaps.localhost';
+          if (isNative) document.documentElement.classList.add('native-android');
+        } catch (e) { /* ignore: fall back to web behaviour */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="app">
@@ -51,8 +73,8 @@
           justify-content: center;
           margin-bottom: 2rem;
         ">
-          <!-- Cyan Neon Glow Ring -->
-          <div style="
+          <!-- Cyan Neon Glow Ring (web only) -->
+          <div class="loader-web-only" style="
             width: 80px;
             height: 80px;
             border-radius: 50%;
@@ -62,8 +84,8 @@
             animation: startup-spin 1s infinite linear;
             box-shadow: 0 0 25px rgba(0, 242, 255, 0.3);
           "></div>
-          <!-- Centered Glowing App Logo Asset -->
-          <img src="/logo.png" alt="VinMaps" style="
+          <!-- Centered Glowing App Logo Asset (always visible) -->
+          <img class="splash-logo" src="/logo.png" alt="VinMaps" draggable="false" style="
             position: absolute;
             width: 50px;
             height: 50px;
@@ -72,7 +94,7 @@
             user-select: none;
           ">
         </div>
-        <div style="
+        <div class="loader-web-only" style="
           font-size: 1.1rem;
           font-weight: 900;
           letter-spacing: 3px;
@@ -82,7 +104,7 @@
           margin-bottom: 0.5rem;
           user-select: none;
         ">VinMaps</div>
-        <div style="
+        <div class="loader-web-only" style="
           font-size: 0.62rem;
           font-weight: 700;
           letter-spacing: 4px;
@@ -101,6 +123,21 @@
           0% { transform: scale(0.9); opacity: 0.75; }
           50% { transform: scale(1.05); opacity: 1; filter: drop-shadow(0 0 10px rgba(0, 242, 255, 0.6)); }
           100% { transform: scale(0.9); opacity: 0.75; }
+        }
+        @keyframes startup-breathe {
+          0%, 100% { transform: scale(1); opacity: 0.94; }
+          50% { transform: scale(1.05); opacity: 1; }
+        }
+        /* Native (Android) launch: show ONLY the VinMaps logo, on the same brand colour
+           as the native splash, so the two screens read as one continuous logo instead
+           of a white frame + duplicated artwork. Desktop/browser is unchanged. */
+        html.native-android .loader-web-only { display: none !important; }
+        html.native-android .startup-loader { background: #060a13 !important; }
+        html.native-android .splash-logo {
+          position: static !important;
+          width: 168px !important;
+          height: 168px !important;
+          animation: startup-breathe 2.4s ease-in-out infinite !important;
         }
       </style>
     </div>
