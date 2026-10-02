@@ -104,6 +104,33 @@
         }
       </style>
     </div>
+    <script>
+      (() => {
+        let startupFailureShown = false;
+
+        const showStartupFailure = (message) => {
+          if (startupFailureShown) return;
+          const loader = document.getElementById('startup-loader');
+          if (!loader) return;
+          startupFailureShown = true;
+          loader.remove();
+
+          const error = document.createElement('div');
+          error.id = 'startup-error';
+          error.textContent = message || 'VinMaps startup failed. Please reload the app.';
+          error.style.cssText = 'position:fixed; top:1rem; left:1rem; right:1rem; z-index:100000; padding:1rem; background:#1a0808; border:1px solid #ff4d4d; color:#ffffff; font:600 0.85rem/1.4 monospace; text-align:center;';
+          document.body.appendChild(error);
+        };
+
+        window.addEventListener('error', (event) => {
+          if (event.error || event.message) showStartupFailure();
+        }, true);
+        window.addEventListener('unhandledrejection', () => showStartupFailure(), true);
+        window.setTimeout(() => {
+          if (document.getElementById('startup-loader')) showStartupFailure('VinMaps is taking too long to start. Please reload the app.');
+        }, 10000);
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
