@@ -47,6 +47,84 @@
         } catch (e) { /* ignore: fall back to web behaviour */ }
       })();
     </script>
+    <!-- STARTUP RECORDER (instrumentation only - no behaviour change).
+         Runs before the app bundle so the startup sequence is measurable on a
+         real device even before a DevTools session can attach: paint times,
+         map container/canvas/marker/loader DOM milestones, the exact cause of
+         any startup-failure path, and map resource timings. Read over
+         chrome://inspect via window.__vinmapsStartup (see
+         scripts/adb-startup-timing.cjs). -->
+    <script>
+      (function () {
+        try {
+          var S = window.__vinmapsStartup = { events: [], resources: [], errors: [], seen: {} };
+          var ev = function (n, extra) {
+            try {
+              var rec = { n: n, t: Math.round(performance.now()), d: Date.now() };
+              if (extra) for (var k in extra) rec[k] = extra[k];
+              S.events.push(rec);
+            } catch (e) { /* timing is best-effort only */ }
+          };
+          ev('recorder-start');
+          window.addEventListener('error', function (e) {
+            var t = e.target;
+            var info = { tag: t && t.tagName, src: t && (t.src || t.href || t.id || ''), msg: (e.message || '').slice(0, 160) };
+            S.errors.push(info);
+            ev('window-error', info);
+          }, true);
+          window.addEventListener('unhandledrejection', function (e) {
+            var r = e.reason;
+            var info = { msg: String(r && (r.message || r)).slice(0, 160) };
+            S.errors.push(info);
+            ev('unhandled-rejection', info);
+          }, true);
+          if (typeof PerformanceObserver === 'function') {
+            try {
+              new PerformanceObserver(function (list) {
+                for (var i = 0; i < list.getEntries().length; i++) {
+                  var p = list.getEntries()[i];
+                  if (p.name === 'first-paint' && !S.firstPaint) { S.firstPaint = Math.round(p.startTime); ev('first-paint'); }
+                  if (p.name === 'first-contentful-paint' && !S.firstContentfulPaint) { S.firstContentfulPaint = Math.round(p.startTime); ev('first-contentful-paint'); }
+                }
+              }).observe({ type: 'paint', buffered: true });
+            } catch (e) { /* unsupported */ }
+            try {
+              new PerformanceObserver(function (list) {
+                for (var i = 0; i < list.getEntries().length; i++) {
+                  if (S.resources.length >= 500) return;
+                  var r = list.getEntries()[i];
+                  if (!/mapbox|carto|geoapify|ipapi/i.test(r.name)) continue;
+                  S.resources.push({
+                    u: r.name.length > 260 ? r.name.slice(0, 260) : r.name,
+                    start: Math.round(r.startTime), end: Math.round(r.responseEnd),
+                    dur: Math.round(r.duration), transfer: r.transferSize, encoded: r.encodedBodySize
+                  });
+                }
+              }).observe({ type: 'resource', buffered: true });
+            } catch (e) { /* unsupported */ }
+          }
+          var seen = S.seen;
+          var watch = function () {
+            try {
+              if (!seen.container && document.getElementById('map-container')) { seen.container = 1; ev('map-container-added'); }
+              if (!seen.canvas && document.querySelector('#map-container canvas')) { seen.canvas = 1; ev('map-canvas-added'); }
+              if (!seen.marker && document.querySelector('.user-location-glow')) { seen.marker = 1; ev('marker-visible'); }
+              var loader = document.getElementById('startup-loader');
+              if (loader && !seen.loaderPresent) { seen.loaderPresent = 1; ev('loader-present'); }
+              if (loader && loader.classList.contains('hidden') && !seen.loaderHidden) { seen.loaderHidden = 1; ev('loader-hidden'); }
+              if (!loader && seen.loaderPresent && !seen.loaderRemoved) { seen.loaderRemoved = 1; ev('loader-removed'); }
+            } catch (e) { /* best-effort */ }
+          };
+          if (typeof MutationObserver === 'function') {
+            new MutationObserver(watch).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+          }
+          var iv = setInterval(function () {
+            watch();
+            if (seen.marker && (seen.loaderHidden || seen.loaderRemoved)) clearInterval(iv);
+          }, 100);
+        } catch (e) { /* instrumentation must never break startup */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="app">
@@ -152,9 +230,11 @@
           startupFailureShown = true;
           loader.remove();
 
+          if (!message) return;
+
           const error = document.createElement('div');
           error.id = 'startup-error';
-          error.textContent = message || 'VinMaps startup failed. Please reload the app.';
+          error.textContent = message;
           error.style.cssText = 'position:fixed; top:1rem; left:1rem; right:1rem; z-index:100000; padding:1rem; background:#1a0808; border:1px solid #ff4d4d; color:#ffffff; font:600 0.85rem/1.4 monospace; text-align:center;';
           document.body.appendChild(error);
         };
@@ -164,7 +244,7 @@
         }, true);
         window.addEventListener('unhandledrejection', () => showStartupFailure(), true);
         window.setTimeout(() => {
-          if (document.getElementById('startup-loader')) showStartupFailure('VinMaps is taking too long to start. Please reload the app.');
+          if (document.getElementById('startup-loader')) showStartupFailure('');
         }, 10000);
       })();
     </script>
